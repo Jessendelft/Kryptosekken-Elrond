@@ -81,6 +81,7 @@ def csvparser():
             MexPrice, RidePrice
     url = "https://api.elrond.com/accounts/" + wallet_address + \
         "/transactions?size=1000&before=1640991600&after=1609455600&withLogs=false"
+    print(url)
     transactions = requests.get(url).json()
     with open('Elrond_Transactions.csv', 'w', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',')
@@ -337,16 +338,19 @@ def csvparser():
             elif transaction["receiver"] == wallet_address:
                 # Try to read the action field.
                 if "action" in transaction:
-                    for transfer in transaction["action"]["arguments"]["transfers"]:
-                        total = 0
-                        ESDTvalue = int(transfer["value"])
-                        ticker = transfer["ticker"].split("-")[0]
-                        if ticker in ESDTs.keys():
-                            total = ESDTs.get(ticker)
-                        ESDTs[ticker] = total + ESDTvalue
-                        writetx("Overføring-Inn", ESDTvalue, ticker, 0, "", 0, \
-                                "Regular transfer in. Double check this type!")
-                    writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
+                    if "arguments" in transaction["action"]:
+                        for transfer in transaction["action"]["arguments"]["transfers"]:
+                            total = 0
+                            ESDTvalue = int(transfer["value"])
+                            ticker = transfer["ticker"].split("-")[0]
+                            if ticker in ESDTs.keys():
+                                total = ESDTs.get(ticker)
+                            ESDTs[ticker] = total + ESDTvalue
+                            writetx("Overføring-Inn", ESDTvalue, ticker, 0, "", 0, \
+                                    "Regular transfer in. Double check this type!")
+                        writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
+                    else:
+                        writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
                 else:
                     eGLDvalue = int(transaction["value"])
                     egld = egld + eGLDvalue
@@ -364,15 +368,6 @@ def csvparser():
             if egld < -0.001*(10**18):
                 print(transactionid)
                 break
-            try:
-                print(timestamp.isoformat() + " LKMEX: " + \
-                      str(ESDTs["LKMEX"]/float(10**18)) + " " + \
-                          transactionid + " " + name)
-                #print("EGLD :" + str(float(egld)/float(10**18)) + \
-                #      ". Staked: " + str(float(stakedegld)/float(10**18)) + \
-                #          ". Hash:" + transactionid + name)
-            except:
-                pass
         print("EGLD :" + str(float(egld)/float(10**18)) + \
               ". Staked: " + str(float(stakedegld)/float(10**18)) + \
                   ". Hash:" + transactionid)
