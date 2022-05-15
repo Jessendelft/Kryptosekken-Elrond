@@ -11,7 +11,6 @@ import datetime
 import json
 
 wallet_address = ""
-CoinAPI_key = ""
 
 # CSV file:
 # Tidspunkt,Type,Inn,Inn-Valuta,Ut,Ut-Valuta,Gebyr,Gebyr-Valuta,Marked,Notat
@@ -50,59 +49,31 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = "", ):
     global timestamp, csvwriter, csverrorwriter, transactionid, gebyrValuta, \
         marked, MexPrice, RidePrice
     # Tidspunkt,Type,Inn,Inn-Valuta,Ut,Ut-Valuta,Gebyr,Gebyr-Valuta,Marked,Notat
-    NormalWrite = True
     try:    InnValuta = InnValuta.split("-")[0]
     except: pass
     try:    UtValuta = UtValuta.split("-")[0]
     except: pass
     if (InnValuta == "MEX" or InnValuta == "LKMEX" or InnValuta == "RIDE") and \
         Ut == 0 and Type == "Inntekt":
-        epoch = timestamp.isoformat()
+        epoch = timestamp.strftime("%d-%m-%Y")
         UtValuta = "NOK"
-        if epoch in MexPrice:
-            Ut = MexPrice[epoch]
-        elif epoch in RidePrice:
-            Ut = RidePrice[epoch]
-        else:
-            if InnValuta == "LKMEX":
-                url = 'https://rest.coinapi.io/v1/exchangerate/MEX/NOK?time=' + str(epoch)
+        try:
+            if InnValuta == "MEX" or InnValuta == "LKMEX":
+                 Ut = float(MexPrice[epoch])*float(10**18)
             else:
-                url = 'https://rest.coinapi.io/v1/exchangerate/' + InnValuta + '/NOK?time=' + str(epoch)
-            print(url)
-            headers = {'X-CoinAPI-Key' : CoinAPI_key}
-            response = requests.get(url, headers=headers)
-            responsejson = response.json()
-            print(responsejson)
-            try:
-                Ut = float(responsejson["rate"]) * float(10**18)
-                if InnValuta == "MEX" or InnValuta == "LKMEX":
-                    MexPrice[epoch] = Ut
-                elif InnValuta == "RIDE":
-                    RidePrice[epoch] = Ut
-            except KeyError:
-                NormalWrite = False
-    if NormalWrite:
-        csvwriter.writerow([timestamp, \
-                            Type, \
-                            str(float(Inn)/float(10**18)), \
-                            InnValuta, \
-                            str(float(Ut)/float(10**18)), \
-                            UtValuta, \
-                            str(float(Gebyr)/float(10**18)), \
-                            gebyrValuta, \
-                            marked, \
-                            "Hash: " + transactionid + ". " + Notat])
-    else:
-        csverrorwriter.writerow([timestamp, \
-                            Type, \
-                            str(float(Inn)/float(10**18)), \
-                            InnValuta, \
-                            str(float(Ut)/float(10**18)), \
-                            UtValuta, \
-                            str(float(Gebyr)/float(10**18)), \
-                            gebyrValuta, \
-                            marked, \
-                            "Hash: " + transactionid + ". " + Notat])
+                 Ut = float(RidePrice[epoch])*float(10**18)
+        except KeyError:
+            Ut = 1*float(10**18)
+    csvwriter.writerow([timestamp, \
+                        Type, \
+                        str(float(Inn)/float(10**18)), \
+                        InnValuta, \
+                        str(float(Ut)/float(10**18)), \
+                        UtValuta, \
+                        str(float(Gebyr)/float(10**18)), \
+                        gebyrValuta, \
+                        marked, \
+                        "Hash: " + transactionid + ". " + Notat])
 
 def csvparser():
     global egld, stakedegld, ESDTs, timestamp, \
@@ -111,20 +82,14 @@ def csvparser():
     url = "https://api.elrond.com/accounts/" + wallet_address + \
         "/transactions?size=1000&before=1640991600&after=1609455600&withLogs=false"
     transactions = requests.get(url).json()
-    with open('Elrond_Transactions.csv', 'w', newline='') as csvfile, \
-            open('Elrond_Missing_Valuta.csv', 'w', newline='') as errorfile, \
-                open("mexprices.json", "a") as mexprices, \
-                    open("rideprices.json", "a") as rideprices:
+    with open('Elrond_Transactions.csv', 'w', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',')
-        csverrorwriter = csv.writer(errorfile, delimiter=',')
         csvwriter.writerow(["Tidspunkt","Type","Inn","Inn-Valuta","Ut",
                            "Ut-Valuta","Gebyr","Gebyr-Valuta","Marked","Notat"])
-        csverrorwriter.writerow(["Tidspunkt","Type","Inn","Inn-Valuta","Ut",
-                           "Ut-Valuta","Gebyr","Gebyr-Valuta","Marked","Notat"])
-        try:        MexPrice = json.load(mexprices)
-        except :    pass
-        try:        RidePrice = json.load(rideprices)
-        except :    pass
+        with open("mexprices.json", "r") as mexprices:
+            MexPrice = json.load(mexprices)
+        with open("rideprices.json", "r") as rideprices:
+            RidePrice = json.load(rideprices)
         # Now the main loop starts
         for transaction in reversed(transactions):
             fee = int(transaction["fee"])
@@ -255,7 +220,6 @@ def csvparser():
                             if operation["action"] == "transfer":
                                 try:
                                     ticker = operation["identifier"].split("-")[0]
-                                    tickerkey = operation["identifier"]
                                 except KeyError:
                                     ticker = "EGLD"
                                 ESDTvalue = int(operation["value"])
@@ -265,13 +229,17 @@ def csvparser():
                                 if operation["receiver"] == wallet_address and \
                                    ticker != "EGLD":
                                     total += ESDTvalue
-                                    Tokensreceived[tickerkey] = ESDTvalue
+                                    if ticker not in Tokensreceived:
+                                        Tokensreceived[ticker] = ESDTvalue
+                                    else:
+                                        print("Found duplicate! " + ticker)
+                                        Tokensreceived[ticker + "-1"] = ESDTvalue
                                 elif operation["receiver"] == wallet_address:
                                     egld += ESDTvalue
                                     Tokensreceived[ticker] = ESDTvalue
                                 if operation["sender"] == wallet_address:
                                     total -= ESDTvalue
-                                    Tokenssent[tickerkey] = ESDTvalue
+                                    Tokenssent[ticker] = ESDTvalue
                                 ESDTs[ticker] = total
                         if name == "addLiquidity":
                             mainticker = list(Tokensreceived.keys())[0]
@@ -291,7 +259,7 @@ def csvparser():
                             mainticker = list(Tokenssent.keys())[0]
                             for key in Tokensreceived.keys():
                                 writetx("Handel", Tokensreceived[key], key,
-                                        Tokenssent[mainticker] / len(Tokenssent.keys()),
+                                        Tokenssent[mainticker] / len(Tokensreceived.keys()),
                                         mainticker, fee / len(Tokensreceived.keys()),
                                         name + ". Double check these numbers!")
                             del Tokenssent[mainticker]
@@ -302,7 +270,8 @@ def csvparser():
                                 if key in Tokensreceived.keys():
                                     difference = Tokensreceived[key] - Tokenssent[key]
                                     del Tokensreceived[key]
-                                    writetx("Erverv", difference, key, 0, "", 0, name)
+                                    if difference > 0:
+                                        writetx("Erverv", difference, key, 0, "", 0, name)
                                 else:
                                     writetx("Tap-uten-fradrag", 0, "", Tokenssent[key], key, 0, name)
                             for key in Tokensreceived.keys():
@@ -313,22 +282,27 @@ def csvparser():
                                 if key in Tokensreceived.keys():
                                     difference = Tokenssent[key] - Tokensreceived[key]
                                     del Tokensreceived[key]
-                                    writetx("Tap-uten-fradrag", 0, "", difference, key, 0, name)
+                                    if difference > 0:
+                                        writetx("Tap-uten-fradrag", 0, "", difference, key, 0, name)
                                 else:
                                     writetx("Tap-uten-fradrag", 0, "", Tokenssent[key], key, 0, name)
-                            for key in Tokensreceived.keys():
-                                if key.split("-")[0] == "MEX" or \
-                                    key.split("-")[0] == "LKMEX" and \
-                                        len(Tokensreceived.keys()) > 2:
-                                    writetx("Inntekt", Tokensreceived[key], key, 0, "", 0, name)
-                                else:
-                                    writetx("Erverv", Tokensreceived[key], key, 0, "", 0, name)
+                            # The first transfer is our own tokens. Treat as Erverv
+                            writetx("Erverv", list(Tokensreceived.values())[0], \
+                                    list(Tokensreceived.keys())[0], 0, "", 0, name)
+                            # The second transfer (if any) is rewards. Treat as Inntekt
+                            try:
+                                writetx("Inntekt", list(Tokensreceived.values())[1], \
+                                        list(Tokensreceived.keys())[1], 0, "", 0, name)
+                            except IndexError:
+                                pass
                             writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
                         elif name == "mergeLockedAssetTokens":
                             writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, name + " fee")
                         elif name == "swap":
                             swapout = transaction["action"]["arguments"]["transfers"][0]["token"]
                             swapin = transaction["action"]["arguments"]["transfers"][1]["token"]
+                            swapout = swapout.split("-")[0]
+                            swapin = swapin.split("-")[0]
                             writetx("Handel", Tokensreceived[swapin], swapin, \
                                     Tokenssent[swapout], swapout, fee, name)
                             del Tokensreceived[swapin]
@@ -339,15 +313,19 @@ def csvparser():
                                 writetx("Inntekt", Tokensreceived[key], key, 0, "", 0, name)
                         elif name == "claimRewards":
                             for key in Tokenssent.keys():
-                                if key in Tokensreceived:
+                                if key in Tokensreceived.keys():
                                     difference = Tokenssent[key] - Tokensreceived[key]
                                     del Tokensreceived[key]
                                     if difference > 0:
                                         writetx("Tap-uten-fradrag", 0, "", difference, key, 0, name)
-                                else:
-                                    writetx("Overføring-Ut", 0, "", Tokenssent[key], key, 0, name)
                             for key in Tokensreceived.keys():
-                                writetx("Inntekt", Tokensreceived[key], key, 0, "", 0, name)
+                                if key == "MEX" or \
+                                    key == "LKMEX" or \
+                                     key == "EGLD" or \
+                                      key == "RIDE":
+                                      writetx("Inntekt", Tokensreceived[key], key, 0, "", 0, name)
+                                else:
+                                    writetx("Erverv", Tokensreceived[key], key, 0, "", 0, name)
                             writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
                 #if no action, it's just a regular transfer out:
                 else:
@@ -383,15 +361,18 @@ def csvparser():
                     print(transactionid)
                     stop = True
             if stop: break
-            if egld < 0:
+            if egld < -0.001*(10**18):
                 print(transactionid)
                 break
             try:
-                print(timestamp.isoformat() + " LKMEX: " + str(ESDTs["LKMEX"]/float(10**18)) + " " + name)
-            except KeyError:
+                print(timestamp.isoformat() + " LKMEX: " + \
+                      str(ESDTs["LKMEX"]/float(10**18)) + " " + \
+                          transactionid + " " + name)
+                #print("EGLD :" + str(float(egld)/float(10**18)) + \
+                #      ". Staked: " + str(float(stakedegld)/float(10**18)) + \
+                #          ". Hash:" + transactionid + name)
+            except:
                 pass
-        mexprices.write(json.dumps(MexPrice))
-        rideprices.write(json.dumps(RidePrice))
         print("EGLD :" + str(float(egld)/float(10**18)) + \
               ". Staked: " + str(float(stakedegld)/float(10**18)) + \
                   ". Hash:" + transactionid)
