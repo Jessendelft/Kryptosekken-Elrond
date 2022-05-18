@@ -58,10 +58,12 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = "", ):
         epoch = timestamp.strftime("%d-%m-%Y")
         UtValuta = "NOK"
         try:
-            if InnValuta == "MEX" or InnValuta == "LKMEX":
-                 Ut = float(MexPrice[epoch])*float(10**18)
+            if InnValuta == "MEX":
+                 Ut = float(MexPrice[epoch])*float(10**18) * Inn
+            elif InnValuta == "RIDE":
+                 Ut = float(RidePrice[epoch])*float(10**18) * Inn
             else:
-                 Ut = float(RidePrice[epoch])*float(10**18)
+                 Ut = 1*float(10**18)
         except KeyError:
             Ut = 1*float(10**18)
     csvwriter.writerow([timestamp, \
