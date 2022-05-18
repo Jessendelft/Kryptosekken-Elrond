@@ -58,7 +58,7 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = "", ):
         epoch = timestamp.strftime("%d-%m-%Y")
         UtValuta = "NOK"
         try:
-            if InnValuta == "MEX":
+            if InnValuta == "MEX" or InnValuta == "LKMEX":
                  Ut = float(MexPrice[epoch])*float(10**18) * Inn
             elif InnValuta == "RIDE":
                  Ut = float(RidePrice[epoch])*float(10**18) * Inn
