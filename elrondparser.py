@@ -45,7 +45,23 @@ marked = "Elrond"
 MexPrice = {}
 RidePrice = {}
 
-def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = "", ):
+def writerow(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
+    if InnValuta == "USDC":
+        Inn = Inn * float(10**12)
+    elif UtValuta == "USDC":
+        Ut = Ut * float(10**12)
+    csvwriter.writerow([timestamp, \
+                        Type, \
+                        str(float(Inn)/float(10**18)), \
+                        InnValuta, \
+                        str(float(Ut)/float(10**18)), \
+                        UtValuta, \
+                        str(float(Gebyr)/float(10**18)), \
+                        gebyrValuta, \
+                        marked, \
+                        "Hash: " + transactionid + ". " + Notat])
+
+def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
     global timestamp, csvwriter, csverrorwriter, transactionid, gebyrValuta, \
         marked, MexPrice, RidePrice
     # Tidspunkt,Type,Inn,Inn-Valuta,Ut,Ut-Valuta,Gebyr,Gebyr-Valuta,Marked,Notat
@@ -58,24 +74,50 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = "", ):
         epoch = timestamp.strftime("%d-%m-%Y")
         UtValuta = "NOK"
         try:
-            if InnValuta == "MEX" or InnValuta == "LKMEX":
-                 Ut = float(MexPrice[epoch])*float(10**18) * Inn
+            if InnValuta in ["MEX", "LKMEX"]:
+                 Ut = float(MexPrice[epoch]) * Inn
             elif InnValuta == "RIDE":
-                 Ut = float(RidePrice[epoch])*float(10**18) * Inn
+                 Ut = float(RidePrice[epoch]) * Inn
             else:
                  Ut = 1*float(10**18)
         except KeyError:
             Ut = 1*float(10**18)
-    csvwriter.writerow([timestamp, \
-                        Type, \
-                        str(float(Inn)/float(10**18)), \
-                        InnValuta, \
-                        str(float(Ut)/float(10**18)), \
-                        UtValuta, \
-                        str(float(Gebyr)/float(10**18)), \
-                        gebyrValuta, \
-                        marked, \
-                        "Hash: " + transactionid + ". " + Notat])
+    if Type == "Handel":
+        #If both variables are not EGLD:
+        if InnValuta != "EGLD" and UtValuta != "EGLD":
+            # Now depends what's the unknown.
+            # WEGLD == EGLD
+            if InnValuta == "WEGLD" or UtValuta == "WEGLD":
+                if InnValuta == "WEGLD":
+                    writerow(Type, Inn, "EGLD", Ut, UtValuta, Gebyr, "Inserted extra step due to unknown value")
+                    writerow(Type, Inn, InnValuta, Inn, "EGLD", 0, "Inserted extra step due to unknown value")
+                elif UtValuta == "WEGLD":
+                    writerow(Type, Ut, "EGLD", Ut, UtValuta, Gebyr, "Inserted extra step due to unknown value")
+                    writerow(Type, Inn, InnValuta, Ut, "EGLD", 0, "Inserted extra step due to unknown value")
+            # else if , we should look at MEX or RIDE value
+            elif InnValuta in ["MEX", "LKMEX", "RIDE"] or \
+                 UtValuta  in ["MEX", "LKMEX", "RIDE"]:
+                epoch = timestamp.strftime("%d-%m-%Y")
+                if InnValuta in ["MEX", "LKMEX"]:
+                    Nok = float(MexPrice[epoch]) * Inn
+                elif UtValuta in ["MEX", "LKMEX"]:
+                    Nok = float(MexPrice[epoch]) * Ut
+                elif InnValuta == "RIDE":
+                    Nok = float(RidePrice[epoch]) * Inn
+                else:
+                    Nok = float(RidePrice[epoch]) * Ut
+                if InnValuta in ["MEX", "LKMEX", "RIDE"]:
+                    writerow(Type, Inn, InnValuta, Nok, "NOK", Gebyr, "Inserted extra step due to unknown value")
+                    writerow(Type, Nok, "NOK", Ut, UtValuta, 0, "Inserted extra step due to unknown value")
+                elif UtValuta in ["MEX", "LKMEX", "RIDE"]:
+                    writerow(Type, Nok, "NOK", Ut, UtValuta, Gebyr, "Inserted extra step due to unknown value")
+                    writerow(Type, Inn, InnValuta, Nok, "NOK", 0, "Inserted extra step due to unknown value")
+            else:
+                writerow(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat) 
+        else:
+            writerow(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat)      
+    else:
+        writerow(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat)
 
 def csvparser():
     global egld, stakedegld, ESDTs, timestamp, \
@@ -370,6 +412,16 @@ def csvparser():
             if egld < -0.001*(10**18):
                 print(transactionid)
                 break
+            try:
+                pass
+                #print(timestamp.isoformat() + " LKMEX: " + \
+                #      str(ESDTs["LKMEX"]/float(10**18)) + " " + \
+                #          transactionid + " " + name)
+                #print("EGLD :" + str(float(egld)/float(10**18)) + \
+                #      ". Staked: " + str(float(stakedegld)/float(10**18)) + \
+                #          ". Hash:" + transactionid + name)
+            except:
+                pass
         print("EGLD :" + str(float(egld)/float(10**18)) + \
               ". Staked: " + str(float(stakedegld)/float(10**18)) + \
                   ". Hash:" + transactionid)
