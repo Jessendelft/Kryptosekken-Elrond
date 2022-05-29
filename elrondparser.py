@@ -9,6 +9,7 @@ import requests
 import csv
 import datetime
 import json
+import time
 
 wallet_address = ""
 
@@ -259,6 +260,10 @@ def csvparser():
                     # Everything else
                     else:
                         fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid)
+                        while fulltx.status_code == 429:
+                            time.sleep(1)
+                            print("sleeping...")
+                            fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid)
                         fulltxjson = fulltx.json()
                         Tokenssent = {}
                         Tokensreceived = {}
