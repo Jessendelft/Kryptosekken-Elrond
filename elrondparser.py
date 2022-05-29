@@ -59,7 +59,7 @@ def writerow(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
                         str(float(Gebyr)/float(10**18)), \
                         gebyrValuta, \
                         marked, \
-                        "Hash: " + transactionid + ". " + Notat])
+                        Notat])
 
 def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
     global timestamp, csvwriter, csverrorwriter, transactionid, gebyrValuta, \
@@ -88,15 +88,17 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
             # Now depends what's the unknown.
             # WEGLD == EGLD
             if InnValuta == "WEGLD" or UtValuta == "WEGLD":
+                Notat = Notat + " Inserted extra step due to unknown value"
                 if InnValuta == "WEGLD":
-                    writerow(Type, Inn, "EGLD", Ut, UtValuta, Gebyr, "Inserted extra step due to unknown value")
-                    writerow(Type, Inn, InnValuta, Inn, "EGLD", 0, "Inserted extra step due to unknown value")
+                    writerow(Type, Inn, "EGLD", Ut, UtValuta, Gebyr, Notat)
+                    writerow(Type, Inn, InnValuta, Inn, "EGLD", 0, Notat)
                 elif UtValuta == "WEGLD":
-                    writerow(Type, Ut, "EGLD", Ut, UtValuta, Gebyr, "Inserted extra step due to unknown value")
-                    writerow(Type, Inn, InnValuta, Ut, "EGLD", 0, "Inserted extra step due to unknown value")
+                    writerow(Type, Ut, "EGLD", Ut, UtValuta, Gebyr, Notat)
+                    writerow(Type, Inn, InnValuta, Ut, "EGLD", 0, Notat)
             # else if , we should look at MEX or RIDE value
             elif InnValuta in ["MEX", "LKMEX", "RIDE"] or \
                  UtValuta  in ["MEX", "LKMEX", "RIDE"]:
+                Notat = Notat + " Inserted extra step due to unknown value"
                 epoch = timestamp.strftime("%d-%m-%Y")
                 if InnValuta in ["MEX", "LKMEX"]:
                     Nok = float(MexPrice[epoch]) * Inn
@@ -107,11 +109,11 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
                 else:
                     Nok = float(RidePrice[epoch]) * Ut
                 if InnValuta in ["MEX", "LKMEX", "RIDE"]:
-                    writerow(Type, Inn, InnValuta, Nok, "NOK", Gebyr, "Inserted extra step due to unknown value")
-                    writerow(Type, Nok, "NOK", Ut, UtValuta, 0, "Inserted extra step due to unknown value")
+                    writerow(Type, Inn, InnValuta, Nok, "NOK", Gebyr, Notat)
+                    writerow(Type, Nok, "NOK", Ut, UtValuta, 0, Notat)
                 elif UtValuta in ["MEX", "LKMEX", "RIDE"]:
-                    writerow(Type, Nok, "NOK", Ut, UtValuta, Gebyr, "Inserted extra step due to unknown value")
-                    writerow(Type, Inn, InnValuta, Nok, "NOK", 0, "Inserted extra step due to unknown value")
+                    writerow(Type, Nok, "NOK", Ut, UtValuta, Gebyr, Notat)
+                    writerow(Type, Inn, InnValuta, Nok, "NOK", 0, Notat)
             else:
                 writerow(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat) 
         else:
@@ -296,20 +298,30 @@ def csvparser():
                                 writetx("Handel", Tokensreceived[mainticker] / len(Tokenssent.keys()), 
                                         mainticker, Tokenssent[key], key, 
                                         fee / len(Tokenssent.keys()), 
-                                        name + ". Double check these numbers!")
+                                        name)
                             del Tokensreceived[mainticker]
                             for key in Tokensreceived.keys():
                                 writetx("Erverv", Tokensreceived[key], key, 0, "", 0, name)
                         elif name == "removeLiquidity":
+                            print(transactionid)
                             mainticker = list(Tokenssent.keys())[0]
+                            firsttoken = list(Tokensreceived.keys())[0]
+                            secondtoken = list(Tokensreceived.keys())[1]
+                            writetx("Handel", Tokensreceived[firsttoken], firsttoken,
+                                        Tokenssent[mainticker] / 2,
+                                        mainticker, fee / 2,
+                                        name)
+                            writetx("Handel", Tokensreceived[secondtoken], secondtoken,
+                                        Tokenssent[mainticker] / 2,
+                                        mainticker, fee / 2,
+                                        name)
+                            del Tokensreceived[firsttoken]
+                            del Tokensreceived[secondtoken]
                             for key in Tokensreceived.keys():
-                                writetx("Handel", Tokensreceived[key], key,
-                                        Tokenssent[mainticker] / len(Tokensreceived.keys()),
-                                        mainticker, fee / len(Tokensreceived.keys()),
-                                        name + ". Double check these numbers!")
+                                writetx("Inntekt", Tokensreceived[key], key, 0, "", 0, name)
                             del Tokenssent[mainticker]
                             for key in Tokenssent.keys():
-                                writetx("Erverv", Tokenssent[key], key, 0, "", 0, name)
+                                writetx("Overføring-Ut", Tokenssent[key], key, 0, "", 0, name)
                         elif name == "enterFarm" or name == "compoundRewards":
                             for key in Tokenssent.keys():
                                 if key in Tokensreceived.keys():
@@ -318,8 +330,11 @@ def csvparser():
                                     if difference > 0:
                                         writetx("Erverv", difference, key, 0, "", 0, name)
                                 else:
-                                    writetx("Tap-uten-fradrag", 0, "", Tokenssent[key], key, 0, name)
+                                    # Since we're entering a farm, the tokens aren't really lost. So Overføring-Ut.
+                                    writetx("Overføring-Ut", 0, "", Tokenssent[key], key, 0, name)
                             for key in Tokensreceived.keys():
+                                # Any tokens we receive we treat as Erverv, as we're not going to attach
+                                # any value to them.
                                 writetx("Erverv", Tokensreceived[key], key, 0, "", 0, name)
                             writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
                         elif name == "exitFarm":
@@ -331,8 +346,8 @@ def csvparser():
                                         writetx("Tap-uten-fradrag", 0, "", difference, key, 0, name)
                                 else:
                                     writetx("Tap-uten-fradrag", 0, "", Tokenssent[key], key, 0, name)
-                            # The first transfer is our own tokens. Treat as Erverv
-                            writetx("Erverv", list(Tokensreceived.values())[0], \
+                            # The first transfer is our own tokens. Treat as Overføring-Inn
+                            writetx("Overføring-Inn", list(Tokensreceived.values())[0], \
                                     list(Tokensreceived.keys())[0], 0, "", 0, name)
                             # The second transfer (if any) is rewards. Treat as Inntekt
                             try:
