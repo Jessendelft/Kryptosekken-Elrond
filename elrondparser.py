@@ -13,6 +13,9 @@ import time
 
 wallet_address = ""
 
+stop_when_negative = True
+true_LKMEX_values = False
+
 # CSV file:
 # Tidspunkt,Type,Inn,Inn-Valuta,Ut,Ut-Valuta,Gebyr,Gebyr-Valuta,Marked,Notat
 # 2017-05-17 12:00:00,Handel,1,BTC,15300,NOK,0,,coinbase,mitt første kjøp
@@ -75,12 +78,17 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
         epoch = timestamp.strftime("%d-%m-%Y")
         UtValuta = "NOK"
         try:
-            if InnValuta in ["MEX", "LKMEX"]:
-                 Ut = float(MexPrice[epoch]) * Inn
+            if InnValuta == "MEX":
+                Ut = float(MexPrice[epoch]) * Inn
+            elif InnValuta == "LKMEX":
+                if true_LKMEX_values:
+                    Ut = float(MexPrice[epoch]) * Inn
+                else:
+                    Ut = Inn / float(10**6)
             elif InnValuta == "RIDE":
-                 Ut = float(RidePrice[epoch]) * Inn
+                Ut = float(RidePrice[epoch]) * Inn
             else:
-                 Ut = 1*float(10**18)
+                Ut = 1*float(10**18)
         except KeyError:
             Ut = 1*float(10**18)
     if Type == "Handel":
@@ -101,10 +109,21 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
                  UtValuta  in ["MEX", "LKMEX", "RIDE"]:
                 Notat = Notat + " Inserted extra step due to unknown value"
                 epoch = timestamp.strftime("%d-%m-%Y")
-                if InnValuta in ["MEX", "LKMEX"]:
+                if InnValuta == "MEX":
                     Nok = float(MexPrice[epoch]) * Inn
-                elif UtValuta in ["MEX", "LKMEX"]:
+                elif InnValuta == "LKMEX":
+                    if true_LKMEX_values:
+                        Nok = float(MexPrice[epoch]) * Inn
+                    else:
+                        Nok = Inn / float(10**6)
+                elif UtValuta == "MEX":
                     Nok = float(MexPrice[epoch]) * Ut
+                elif UtValuta == "LKMEX":
+                    if true_LKMEX_values:
+                        Nok = float(MexPrice[epoch]) * Ut
+                    else:
+                        Nok = Ut / float(10**6)
+                    Nok = Ut / float(10**6)
                 elif InnValuta == "RIDE":
                     Nok = float(RidePrice[epoch]) * Inn
                 else:
@@ -129,7 +148,7 @@ def csvparser():
     url = "https://api.elrond.com/accounts/" + wallet_address + \
         "/transactions?size=1000&before=1640991600&after=1609455600&withLogs=false"
     print(url)
-    transactions = requests.get(url).json()
+    transactions = requests.get(url, verify=False).json()
     with open('Elrond_Transactions.csv', 'w', newline='') as csvfile:
         csvwriter = csv.writer(csvfile, delimiter=',')
         csvwriter.writerow(["Tidspunkt","Type","Inn","Inn-Valuta","Ut",
@@ -163,7 +182,7 @@ def csvparser():
                         #Nothing of interest happens here, funds are not returned until withdraw
                     # unBond (legacy) or withdraw
                     elif name == "unBond" or name == "withdraw":
-                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid)
+                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid, verify=False)
                         fulltxjson = fulltx.json()
                         for result in fulltxjson["results"]:
                             if result["receiver"] == wallet_address:
@@ -180,7 +199,7 @@ def csvparser():
                         writetx("Overføring-Ut", 0, "", eGLDvalue, "EGLD", fee, name)
                     # unStaking (legacy)
                     elif name == "unStake":
-                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid)
+                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid, verify=False)
                         fulltxjson = fulltx.json()
                         for result in fulltxjson["results"]:
                             if fulltxjson["receiver"] == wallet_address:
@@ -190,7 +209,7 @@ def csvparser():
                         writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
                     # reDelegating
                     elif name == "reDelegateRewards":
-                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid)
+                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid, verify=False)
                         fulltxjson = fulltx.json()
                         for result in fulltxjson["results"]:
                             if result["receiver"] == wallet_address:
@@ -222,7 +241,7 @@ def csvparser():
                         writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
                     # claim first LKMEX batch == inntekt
                     elif name == "claimLockedAssets":
-                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid)
+                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid, verify=False)
                         fulltxjson = fulltx.json()
                         for operation in fulltxjson["operations"]:
                             if operation["action"] == "transfer":
@@ -239,7 +258,7 @@ def csvparser():
                         writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
                     # claim Launchpad tokens. Claim == inntekt
                     elif name == "claimLaunchpadTokens":
-                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid)
+                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid, verify=False)
                         fulltxjson = fulltx.json()
                         for operation in fulltxjson["operations"]:
                             if operation["type"] == "egld":
@@ -259,11 +278,11 @@ def csvparser():
                     # compoundRewards. When we're compounding, we need to look at the difference.
                     # Everything else
                     else:
-                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid)
+                        fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid, verify=False)
                         while fulltx.status_code == 429:
                             time.sleep(1)
                             print("sleeping...")
-                            fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid)
+                            fulltx = requests.get("https://api.elrond.com/transactions/"+transactionid, verify=False)
                         fulltxjson = fulltx.json()
                         Tokenssent = {}
                         Tokensreceived = {}
@@ -428,10 +447,11 @@ def csvparser():
                 if ESDTs[key] < -1*(10**18):
                     print(transactionid)
                     stop = True
-            if stop: break
-            if egld < -0.001*(10**18):
+            if stop or egld < -0.001*(10**18):
+                print("WARNING: Negative wallet value!")
                 print(transactionid)
-                break
+                if stop_when_negative:
+                    break
             try:
                 pass
                 #print(timestamp.isoformat() + " LKMEX: " + \
@@ -447,6 +467,7 @@ def csvparser():
                   ". Hash:" + transactionid)
         for ESDT in ESDTs:    
             print(ESDT + ": " + str(float(ESDTs[ESDT])/float(10**18)))
-
+            
+            
 if __name__ == "__main__":
     csvparser()
