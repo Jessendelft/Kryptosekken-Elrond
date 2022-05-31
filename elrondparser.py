@@ -13,7 +13,7 @@ import time
 
 wallet_address = ""
 
-stop_when_negative = True
+stop_when_negative = False
 true_LKMEX_values = False
 
 # CSV file:
@@ -48,13 +48,33 @@ gebyrValuta = "EGLD"
 marked = "Elrond"
 MexPrice = {}
 RidePrice = {}
-KnownValues = ["MEX", "LKMEX", "RIDE"]
+EgldPrice = {}
+KnownValues = ["MEX", "LKMEX", "RIDE", "EGLD"]
+unKnownValues = {}
 
 def writerow(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
+    global KnownValues, unKnownValues
     if InnValuta == "USDC":
         Inn = Inn * float(10**12)
     elif UtValuta == "USDC":
         Ut = Ut * float(10**12)
+    # If we use NOK to buy unknown stuff, we should document how much it costed.
+    if Type == "Handel" and UtValuta == "NOK" and InnValuta not in KnownValues + ["WEGLD"]:
+        try:
+            unKnownValues[InnValuta] = [unKnownValues[InnValuta][0] + Inn, \
+                                       unKnownValues[InnValuta][1] + Ut]
+        except KeyError:
+            unKnownValues[InnValuta] = [Inn, Ut]
+        #print(unKnownValues)
+    elif Type == "Handel" and InnValuta == "NOK" and UtValuta not in KnownValues + ["WEGLD"]:
+        Nok = (Ut / unKnownValues[UtValuta][0]) * unKnownValues[UtValuta][1]
+        unKnownValues[UtValuta] = [unKnownValues[UtValuta][0] - Ut, \
+                                       unKnownValues[UtValuta][1] - Nok]
+        #print(unKnownValues)
+    elif Type == "Erverv" and InnValuta not in KnownValues + ["WEGLD"]:
+        unKnownValues[InnValuta] = [unKnownValues[InnValuta][0] + Inn, \
+                                   unKnownValues[InnValuta][1]]
+        #print(unKnownValues)
     csvwriter.writerow([timestamp, \
                         Type, \
                         str(float(Inn)/float(10**18)), \
@@ -68,15 +88,15 @@ def writerow(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
 
 def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
     global timestamp, csvwriter, csverrorwriter, transactionid, gebyrValuta, \
-        marked, MexPrice, RidePrice, KnownValues
+        marked, MexPrice, RidePrice, EgldPrice, KnownValues
     # Tidspunkt,Type,Inn,Inn-Valuta,Ut,Ut-Valuta,Gebyr,Gebyr-Valuta,Marked,Notat
     try:    InnValuta = InnValuta.split("-")[0]
     except: pass
     try:    UtValuta = UtValuta.split("-")[0]
     except: pass
+    epoch = timestamp.strftime("%d-%m-%Y")
     if (InnValuta == "MEX" or InnValuta == "LKMEX" or InnValuta == "RIDE") and \
         Ut == 0 and Type == "Inntekt":
-        epoch = timestamp.strftime("%d-%m-%Y")
         UtValuta = "NOK"
         try:
             if InnValuta == "MEX":
@@ -98,18 +118,20 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
             # Now depends what's the unknown.
             # WEGLD == EGLD
             if InnValuta == "WEGLD" or UtValuta == "WEGLD":
+                # We go through NOK, so we can document how much thing cost
                 Notat = Notat + " Inserted extra step due to unknown value"
                 if InnValuta == "WEGLD":
-                    writerow(Type, Inn, "EGLD", Ut, UtValuta, Gebyr, Notat)
-                    writerow(Type, Inn, InnValuta, Inn, "EGLD", 0, Notat)
+                    Nok = float(EgldPrice[epoch]) * Inn
+                    writerow(Type, Nok, "NOK", Ut, UtValuta, Gebyr, Notat)
+                    writerow(Type, Inn, InnValuta, Nok, "NOK", 0, Notat)
                 elif UtValuta == "WEGLD":
-                    writerow(Type, Ut, "EGLD", Ut, UtValuta, Gebyr, Notat)
-                    writerow(Type, Inn, InnValuta, Ut, "EGLD", 0, Notat)
+                    Nok = float(EgldPrice[epoch]) * Ut
+                    writerow(Type, Inn, InnValuta, Nok, "NOK", 0, Notat)
+                    writerow(Type, Nok, "NOK", Ut, UtValuta, Gebyr, Notat)
             # else if , we should look at MEX or RIDE value
             elif InnValuta in KnownValues or \
                  UtValuta  in KnownValues:
                 Notat = Notat + " Inserted extra step due to unknown value"
-                epoch = timestamp.strftime("%d-%m-%Y")
                 if InnValuta == "MEX":
                     Nok = float(MexPrice[epoch]) * Inn
                 elif InnValuta == "LKMEX":
@@ -135,8 +157,14 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
                 elif UtValuta in KnownValues:
                     writerow(Type, Nok, "NOK", Ut, UtValuta, Gebyr, Notat)
                     writerow(Type, Inn, InnValuta, Nok, "NOK", 0, Notat)
+            # else, if nothing is known, we should look at our saved values.
             else:
-                writerow(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat) 
+                Notat = Notat + " Inserted extra step due to unknown value"
+                # We know how much things costed when we first bought LP tokens/farm tokens.
+                # We use this value to calculate our new LP tokens value
+                Nok = (Ut / unKnownValues[UtValuta][0]) * unKnownValues[UtValuta][1]
+                writerow(Type, Inn, InnValuta, Nok, "NOK", Gebyr, Notat)
+                writerow(Type, Nok, "NOK", Ut, UtValuta, 0, Notat)
         else:
             writerow(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat)      
     else:
@@ -145,7 +173,7 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
 def csvparser():
     global egld, stakedegld, ESDTs, timestamp, \
         csvwriter, csverrorwriter, transactionid, gebyrValuta, marked, \
-            MexPrice, RidePrice, KnownValues
+            MexPrice, RidePrice, EgldPrice, KnownValues
     url = "https://api.elrond.com/accounts/" + wallet_address + \
         "/transactions?size=1000&before=1640991600&after=1609455600&withLogs=false"
     print(url)
@@ -158,6 +186,8 @@ def csvparser():
             MexPrice = json.load(mexprices)
         with open("rideprices.json", "r") as rideprices:
             RidePrice = json.load(rideprices)
+        with open("egldprices.json", "r") as egldprices:
+            EgldPrice = json.load(egldprices)
         # Now the main loop starts
         for transaction in reversed(transactions):
             fee = int(transaction["fee"])
@@ -364,42 +394,41 @@ def csvparser():
                             writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
                         elif name == "enterFarm":
                             topreceived = list(Tokensreceived.keys())[0]
-                            for key in Tokenssent.keys():
+                            for key in Tokensreceived.keys():
                                 # When we enter a farm it can be that we already staked to that farm.
                                 # In that case, Elrond will send us a sum of all tokens, including the new ones we put in.
-                                if key in Tokensreceived.keys():
+                                if key in Tokenssent.keys():
                                     difference = Tokensreceived[key] - Tokenssent[key]
                                     Tokensreceived[key] = difference
+                                    del Tokenssent[key]
                             for key in Tokenssent.keys():
-                                if key in KnownValues:
-                                    # If we're sending MEX, LKMEX or RIDE to a farm, we know the value.
-                                    writetx("Handel", Tokensreceived[topreceived], topreceived, Tokenssent[key], key, 0, name)
-                                    del Tokensreceived[topreceived]
-                                else:
-                                    # Anything else, we don't know the value.
-                                    writetx("Overføring-Ut", 0, "", Tokenssent[key], key, 0, name)
+                                # For each token we sent, 
+                                writetx("Handel", Tokensreceived[topreceived], topreceived, Tokenssent[key], key, 0, name)
+                                del Tokensreceived[topreceived]
+                                #else:
+                                #    # Anything else, we don't know the value.
+                                #    writetx("Overføring-Ut", 0, "", Tokenssent[key], key, 0, name)
                             for key in Tokensreceived.keys():
                                 # Any tokens we receive we treat as Erverv, as we're not going to attach
                                 # any value to them now.
                                 writetx("Erverv", Tokensreceived[key], key, 0, "", 0, name)
-                            writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
+                            #writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
                         elif name == "exitFarm":
                             topreceived = list(Tokensreceived.keys())[0]
                             deleted = False
                             for key in Tokenssent.keys():
                                 if key in Tokensreceived.keys():
                                     difference = Tokenssent[key] - Tokensreceived[key]
-                                    del Tokensreceived[key]
-                                    if difference > 0:
-                                        writetx("Tap-uten-fradrag", 0, "", difference, key, 0, name)
-                                elif topreceived in KnownValues:
+                                    Tokenssent[key] = difference
+                            for key in Tokenssent.keys():
+                                
                                     #If our main income is MEX, LKMEX or RIDE, we should treat it as a Handel
-                                    writetx("Handel", Tokensreceived[topreceived], topreceived, Tokenssent[key], key, 0, name)
-                                    del Tokensreceived[topreceived]
-                                    deleted = True
-                                else:
-                                    #Otherwise, we don't know the value & things are just lost.
-                                    writetx("Tap-uten-fradrag", 0, "", Tokenssent[key], key, 0, name)
+                                writetx("Handel", Tokensreceived[topreceived], topreceived, Tokenssent[key], key, 0, name)
+                                del Tokensreceived[topreceived]
+                                deleted = True
+                                #else:
+                                #    #Otherwise, we don't know the value & things are just lost.
+                                #    writetx("Tap-uten-fradrag", 0, "", Tokenssent[key], key, 0, name)
                             try:
                                 if deleted:
                                     # The transfer (if any) are rewards. Treat as Inntekt
@@ -414,7 +443,7 @@ def csvparser():
                                             list(Tokensreceived.keys())[1], 0, "", 0, name)
                             except IndexError:
                                 pass
-                            writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
+                            #writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, "fee")
                         elif name == "mergeLockedAssetTokens":
                             writetx("Overføring-Ut", 0, "", 0, "EGLD", fee, name + " fee")
                         elif name == "swap":
@@ -504,3 +533,4 @@ def csvparser():
             
 if __name__ == "__main__":
     csvparser()
+    
