@@ -10,6 +10,8 @@ import csv
 import datetime
 import json
 import time
+import warnings
+warnings.filterwarnings("ignore")
 
 wallet_address = ""
 
