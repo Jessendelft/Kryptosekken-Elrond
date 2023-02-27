@@ -14,9 +14,12 @@ Update elrondparser.py
 - Updated API address to new multiversx address.
 - Removed internal token counter as it was broken anyway.
 - Improved URL retrieval. Takes max 2 queries/ip/second.
-- Added support for Aliases
+- Improved genetated Notat text.
+- Added support for Aliases. Addresses can be replaced by a manual alias, which appears in the Notat field on Kryptosekken.
+- Herotags will automatically be used instead of addresses.
 - Added support for NFT's.
 - Added support for NFT handel. NOTE: Does not work for handel done on eMoon unfortunately as their transactions don't include details of what has been sold.
 - Partial XMEX support, but may be insufficient.
 - Multiple small fixes.
+
 Removed mexprices.json, rideprices.json, egldprices.json as they were unused.
