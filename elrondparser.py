@@ -44,7 +44,6 @@ def delayURL():
     """Delays URL queries based upon max 2/ip/second rule"""
     global urlrequestsleft, nexturlrequest
     now = datetime.datetime.now()
-    print(str(now) + " " + str(nexturlrequest))
     if now < nexturlrequest:
         print(urlrequestsleft)
         urlrequestsleft -= 1
