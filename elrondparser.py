@@ -418,7 +418,7 @@ def csvparser():
                         originaltxhash = transaction["originalTxHash"]
                         fulltx = getURL(APIaddress + "/transactions/" + originaltxhash).json()
                         function = fulltx["function"]
-                        if function in ["buy", "buyNft", "mint", "enterSale"]:
+                        if function in ["buy", "buyNft", "mint", "enterSale"] and fulltx["status"] == "success"::
                             Tokenssent, Tokensreceived = getTokens(fulltx)
                             {
                               "buy": getNFT,
