@@ -45,10 +45,10 @@ def delayURL():
     global urlrequestsleft, nexturlrequest
     now = datetime.datetime.now()
     if now < nexturlrequest:
-        print(urlrequestsleft)
+        print("Queries left this second: " + str(urlrequestsleft))
         urlrequestsleft -= 1
         if not urlrequestsleft:
-            print("sleeping : " + str((nexturlrequest - now).total_seconds()))
+            print("Sleeping : " + str((nexturlrequest - now).total_seconds()) + " seconds")
             time.sleep((nexturlrequest - now).total_seconds())
             time.sleep(0.1)
     else:
@@ -60,7 +60,7 @@ def getURL(url):
     delayURL()
     fulltx = requests.get(url, verify=False)
     while fulltx.status_code not in [200, 400, 404]:
-        print(str(fulltx.status_code))
+        print("Error retrieving from server, status code: " + str(fulltx.status_code))
         delayURL()
         fulltx = requests.get(url, verify=False)
     return fulltx
@@ -70,7 +70,7 @@ def postURL(url, json):
     delayURL()
     fulltx = requests.post(url, json=json, verify=False)
     while fulltx.status_code not in [200, 400, 404]:
-        print(str(fulltx.status_code))
+        print("Error retrieving from server, status code: " + str(fulltx.status_code))
         delayURL()
         fulltx = requests.get(url, json=json, verify=False)
     return fulltx
@@ -342,37 +342,45 @@ def csvparser():
                     Tokenssent, Tokensreceived = getTokens(fulltx)
                     ### Secondly, we write to our csv file depending on the type.
                     try:
-                        {'delegate': stake, 
-                          'unDelegate': feeOnly, 
-                          'stake': stake,
-                          'wrapEgld': wrapEgld,
-                          'unwrapEgld': unwrapEgld,
-                          'confirmTickets': feeOnly,
-                          'unBond': unStake,
-                          'withdraw': unStake,
-                          "unStake": unStake,
-                          "reDelegateRewards": reDelegateRewards,
-                          "claimLockedAssets": claimLockedAssets,
-                          "claimLaunchpadTokens": claimLaunchpadTokens,
-                          "addLiquidity": addLiquidity,
-                          "removeLiquidity": removeLiquidity,
-                          "compoundRewards": compoundRewards,
-                          "enterFarm": enterFarm,
-                          "exitFarm": exitFarm,
-                          "unlockAssets": exitFarm,
-                          "mergeLockedAssetTokens": feeOnly,
-                          "swap": swap,
-                          "claimRewards": claimRewards,
-                          "issueSemiFungable": feeOnly,
-                          "buy": getNFT,
-                          "buyNft": getNFT,
-                          "mint": getNFT,
-                          "enterSale": getNFT,
-                          "transfer": Transfer,
-                          "ESDTNFTCreate": getNFT
-                          }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
+                        # {'delegate': stake, 
+                        #   'unDelegate': feeOnly, 
+                        #   'stake': stake,
+                        #   'wrapEgld': wrapEgld,
+                        #   'unwrapEgld': unwrapEgld,
+                        #   'confirmTickets': feeOnly,
+                        #   'unBond': unStake,
+                        #   'withdraw': unStake,
+                        #   "unStake": unStake,
+                        #   "reDelegateRewards": reDelegateRewards,
+                        #   "claimLockedAssets": claimLockedAssets,
+                        #   "claimLaunchpadTokens": claimLaunchpadTokens,
+                        #   "addLiquidity": addLiquidity,
+                        #   "removeLiquidity": removeLiquidity,
+                        #   "compoundRewards": compoundRewards,
+                        #   "enterFarm": enterFarm,
+                        #   "exitFarm": exitFarm,
+                        #   "unlockAssets": exitFarm,
+                        #   "mergeLockedAssetTokens": feeOnly,
+                        #   "swap": swap,
+                        #   "claimRewards": claimRewards,
+                        #   "issueSemiFungable": feeOnly,
+                        #   "buy": getNFT,
+                        #   "buyNft": getNFT,
+                        #   "mint": getNFT,
+                        #   "enterSale": getNFT,
+                        #   "transfer": Transfer,
+                        #   "ESDTNFTCreate": getNFT
+                        #   }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
+                       { "buy": getNFT,
+                         "buyNft": getNFT,
+                         "mint": getNFT,
+                         "enterSale": getNFT,
+                         "transfer": Transfer,
+                         "ESDTNFTCreate": getNFT
+                         }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
                     except KeyError:
-                        undefined_tx(name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
+                        # undefined_tx(name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
+                        pass
                 ### if no "action", it's just a regular transfer out:
                 else:
                     eGLDvalue = int(transaction["value"])
@@ -464,12 +472,22 @@ def getTokens(fulltx):
                     if ticker not in Tokensreceived:
                         Tokensreceived[ticker] = ESDTvalue
                     else:
-                        print("Found duplicate! " + ticker)
-                        Tokensreceived[ticker + "-1"] = ESDTvalue
+                        n = 0
+                        newtick = ticker
+                        while newtick in Tokensreceived:
+                            print("Found duplicate! " + newtick)
+                            n += 1
+                            newtick = ticker + "_" + str(n)
+                        ticker = newtick
+                        Tokensreceived[ticker] = ESDTvalue
                 elif operation["receiver"] == wallet_address:
-                    Tokensreceived[ticker] = ESDTvalue
+                    if ticker not in Tokensreceived:
+                        Tokensreceived[ticker] = ESDTvalue
+                    else: Tokensreceived[ticker] += ESDTvalue
                 if operation["sender"] == wallet_address:
-                    Tokenssent[ticker] = ESDTvalue
+                    if ticker not in Tokenssent:
+                        Tokenssent[ticker] = ESDTvalue
+                    else: Tokenssent[ticker] += ESDTvalue
     return Tokenssent, Tokensreceived
 
 def feeOnly(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
@@ -664,6 +682,9 @@ def getNFT(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
     ### First option is that we're buying an NFT.
     if "EGLD" not in Tokensreceived:
         EGLDvalue = float(fulltx["value"])
+        tr = {list(Tokensreceived)[0]:0.0}
+        for key in Tokensreceived.keys():
+            tr[key.split("_")[0]] += Tokensreceived[key]
         for key in Tokensreceived.keys():
             writetx("Handel",  Tokensreceived[key], key, EGLDvalue/len(Tokensreceived.keys()), "EGLD", fee, name + " at " + transaction["receiver"])
     ### Second option is that we're selling an NFT, and receiving EGLD for it.
