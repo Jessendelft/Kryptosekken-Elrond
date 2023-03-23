@@ -458,9 +458,9 @@ def getTokens(fulltx):
                     ticker = operation["identifier"]
                 if len(ticker.split("-")) > 2:
                     ticker = ticker.split("-")[0] + "-" + ticker.split("-")[1]
-                if "type" in operation:
-                    if operation["type"] == "nft":
-                        ticker = "NFT" + ticker
+                # if "type" in operation:
+                #     if operation["type"] == "nft":
+                #         ticker = "NFT" + ticker
                 ESDTvalue = int(operation["value"])
                 if operation["receiver"] == wallet_address and \
                    ticker != "EGLD":
