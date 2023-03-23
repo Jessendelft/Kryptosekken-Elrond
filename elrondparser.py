@@ -23,9 +23,9 @@ aliases = { "erd1w9mmxz6533m7cf08gehs8phkun2x4e8689ecfk3makk3dgzsgurszhsxk4":"eM
             "erd1qqqqqqqqqqqqqpgq6wegs2xkypfpync8mn2sa5cmpqjlvrhwz5nqgepyg8":"XOXNO Marketplace",
             "erd1deaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaqtv0gag":"Burn Wallet",
             "erd12v2r3q33g43hju8smz6g4sgsqsxaut3e5lnjr5r3xrljqj3pwfmq0pxhz6":"Aerovek"} # Optional Aliases used to replace wallet values in notat field.
-startdate = datetime.datetime(2022,1,1)     ### Start date
-enddate = datetime.datetime(2023,1,1)       ### End date
-marked = "Elrond"           ### Market text.
+startdate = datetime.datetime(2022,1,1) #Y,M,D
+enddate = datetime.datetime(2023,1,1) #Y,M,D
+marked = "Elrond"
 
 """Global variables"""
 APIaddress = "https://api.multiversx.com"
@@ -88,7 +88,7 @@ def AliasSwap(check_for_alias_tx, field = "dummy"):
     if check_tx[field] in aliases: check_tx[field] = aliases[check_tx[field]]
     ### Next we check if we already received an Assets field
     elif (field+"Assets") in check_tx:
-        check_tx[field] = check_tx[field+"Assets"]
+        check_tx[field] = check_tx[field+"Assets"]["name"]
     ### If not, we start spamming the server
     else:
         SmartContract = False
@@ -294,6 +294,7 @@ def csvparser():
     url = APIaddress + "/accounts/" + wallet_address + \
         "/transfers?size=1000&withLogs=false&after=" + str(int(startdate.timestamp())) + \
             "&before=" + str(int(enddate.timestamp()))
+    print(url)
     transactions = getURL(url).json()
     wallet_address = AliasSwap(wallet_address)
     for address in range(len(ownWalletlist)):
@@ -342,45 +343,37 @@ def csvparser():
                     Tokenssent, Tokensreceived = getTokens(fulltx)
                     ### Secondly, we write to our csv file depending on the type.
                     try:
-                        # {'delegate': stake, 
-                        #   'unDelegate': feeOnly, 
-                        #   'stake': stake,
-                        #   'wrapEgld': wrapEgld,
-                        #   'unwrapEgld': unwrapEgld,
-                        #   'confirmTickets': feeOnly,
-                        #   'unBond': unStake,
-                        #   'withdraw': unStake,
-                        #   "unStake": unStake,
-                        #   "reDelegateRewards": reDelegateRewards,
-                        #   "claimLockedAssets": claimLockedAssets,
-                        #   "claimLaunchpadTokens": claimLaunchpadTokens,
-                        #   "addLiquidity": addLiquidity,
-                        #   "removeLiquidity": removeLiquidity,
-                        #   "compoundRewards": compoundRewards,
-                        #   "enterFarm": enterFarm,
-                        #   "exitFarm": exitFarm,
-                        #   "unlockAssets": exitFarm,
-                        #   "mergeLockedAssetTokens": feeOnly,
-                        #   "swap": swap,
-                        #   "claimRewards": claimRewards,
-                        #   "issueSemiFungable": feeOnly,
-                        #   "buy": getNFT,
-                        #   "buyNft": getNFT,
-                        #   "mint": getNFT,
-                        #   "enterSale": getNFT,
-                        #   "transfer": Transfer,
-                        #   "ESDTNFTCreate": getNFT
-                        #   }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
-                       { "buy": getNFT,
-                         "buyNft": getNFT,
-                         "mint": getNFT,
-                         "enterSale": getNFT,
-                         "transfer": Transfer,
-                         "ESDTNFTCreate": getNFT
-                         }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
+                        {'delegate': stake, 
+                          'unDelegate': feeOnly, 
+                          'stake': stake,
+                          'wrapEgld': wrapEgld,
+                          'unwrapEgld': unwrapEgld,
+                          'confirmTickets': feeOnly,
+                          'unBond': unStake,
+                          'withdraw': unStake,
+                          "unStake": unStake,
+                          "reDelegateRewards": reDelegateRewards,
+                          "claimLockedAssets": claimLockedAssets,
+                          "claimLaunchpadTokens": claimLaunchpadTokens,
+                          "addLiquidity": addLiquidity,
+                          "removeLiquidity": removeLiquidity,
+                          "compoundRewards": compoundRewards,
+                          "enterFarm": enterFarm,
+                          "exitFarm": exitFarm,
+                          "unlockAssets": exitFarm,
+                          "mergeLockedAssetTokens": feeOnly,
+                          "swap": swap,
+                          "claimRewards": claimRewards,
+                          "issueSemiFungable": feeOnly,
+                          "buy": getNFT,
+                          "buyNft": getNFT,
+                          "mint": getNFT,
+                          "enterSale": getNFT,
+                          "transfer": Transfer,
+                          "ESDTNFTCreate": getNFT
+                          }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
                     except KeyError:
-                        # undefined_tx(name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
-                        pass
+                        undefined_tx(name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
                 ### if no "action", it's just a regular transfer out:
                 else:
                     eGLDvalue = int(transaction["value"])
@@ -418,7 +411,7 @@ def csvparser():
                         originaltxhash = transaction["originalTxHash"]
                         fulltx = getURL(APIaddress + "/transactions/" + originaltxhash).json()
                         function = fulltx["function"]
-                        if function in ["buy", "buyNft", "mint", "enterSale"] and fulltx["status"] == "success"::
+                        if function in ["buy", "buyNft", "mint", "enterSale"] and fulltx["status"] == "success":
                             Tokenssent, Tokensreceived = getTokens(fulltx)
                             {
                               "buy": getNFT,
@@ -460,12 +453,14 @@ def getTokens(fulltx):
             operation["sender"] = AliasSwap(operation, "sender")
             operation["receiver"] = AliasSwap(operation, "receiver")
             if operation["action"] == "transfer":
-                try:
+                ticker = "EGLD"
+                if "identifier" in operation:
                     ticker = operation["identifier"]
-                except KeyError:
-                    ticker = "EGLD"
                 if len(ticker.split("-")) > 2:
                     ticker = ticker.split("-")[0] + "-" + ticker.split("-")[1]
+                if "type" in operation:
+                    if operation["type"] == "nft":
+                        ticker = "NFT" + ticker
                 ESDTvalue = int(operation["value"])
                 if operation["receiver"] == wallet_address and \
                    ticker != "EGLD":
@@ -682,6 +677,7 @@ def getNFT(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
     ### First option is that we're buying an NFT.
     if "EGLD" not in Tokensreceived:
         EGLDvalue = float(fulltx["value"])
+        print(Tokensreceived, Tokenssent)
         tr = {list(Tokensreceived)[0]:0.0}
         for key in Tokensreceived.keys():
             tr[key.split("_")[0]] += Tokensreceived[key]
