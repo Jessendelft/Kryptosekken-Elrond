@@ -209,14 +209,15 @@ def getPriceData(token, epoch):
                 }"""
         r = postURL(url, json={'query': query})
         result = json.loads(r.text)
-        for pricepoint in result["data"]["values24h"]:
-            timestamp = pricepoint["timestamp"].split(" ")[0]
-            price = float(pricepoint["value"])
-            if token in PriceData:
-                PriceData[token][timestamp] = price
-            else:
-                PriceData[token] = {}
-                PriceData[token][timestamp] = price
+        if result["data"] is not None:
+            for pricepoint in result["data"]["values24h"]:
+                timestamp = pricepoint["timestamp"].split(" ")[0]
+                price = float(pricepoint["value"])
+                if token in PriceData:
+                    PriceData[token][timestamp] = price
+                else:
+                    PriceData[token] = {}
+                    PriceData[token][timestamp] = price
     ### Now it's time to return the price. If it's not available, we look forward in time.
     date = datetime.datetime.strptime(epoch, "%Y-%m-%d")
     while datetime.datetime.strftime(date, "%Y-%m-%d") not in PriceData[token]:
@@ -240,8 +241,13 @@ def writetx(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
     global timestamp, csvwriter, csverrorwriter, transactionid, gebyrValuta, \
         marked
     try:    InnValutaSplit = InnValuta.split("-")[0]
-    except: pass
+    except Exception as e: print(e)
     try:    UtValutaSplit = UtValuta.split("-")[0]
+    except Exception as e: print(e)
+    epoch = timestamp.strftime("%Y-%m-%d")
+    try:    InnValuta = InnValuta.split("_")[0]
+    except: pass
+    try:    UtValuta = UtValuta.split("_")[0]
     except: pass
     epoch = timestamp.strftime("%Y-%m-%d")
     ### Check if we're receiving something that we need to valuate
@@ -303,8 +309,13 @@ def csvparser():
         csvwriter = csv.writer(csvfile, delimiter=',')
         csvwriter.writerow(["Tidspunkt","Type","Inn","Inn-Valuta","Ut",
                            "Ut-Valuta","Gebyr","Gebyr-Valuta","Marked","Notat"])
+        totalcount = len(transactions)
+        print(f"Received {totalcount} transactions")
+        progresscount = 0
         ### Now the main loop starts
         for transaction in reversed(transactions):
+            progresscount += 1
+            print(f"Processing transaction {progresscount}/{totalcount}")
             try:
                 fee = int(transaction["fee"])
             except KeyError:
