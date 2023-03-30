@@ -37,23 +37,24 @@ gebyrValuta = "EGLD"
 PriceData = {}
 Tokendecimals = {"EGLD":18, "LKMEX":18, "NOK":18}
 registeredfees = []
-nexturlrequest = datetime.datetime.now() + datetime.timedelta(seconds = 1)
+nexturlrequest = datetime.now() + timedelta(seconds = 1)
 urlrequestsleft = 2
+startdexdate = "2021-11-21"
 
 def delayURL():
     """Delays URL queries based upon max 2/ip/second rule"""
     global urlrequestsleft, nexturlrequest
-    now = datetime.datetime.now()
+    now = datetime.now()
     if now < nexturlrequest:
-        print("Queries left this second: " + str(urlrequestsleft))
+        #print("Queries left this second: " + str(urlrequestsleft))
         urlrequestsleft -= 1
         if not urlrequestsleft:
-            print("Sleeping : " + str((nexturlrequest - now).total_seconds()) + " seconds")
+            #print("Sleeping : " + str((nexturlrequest - now).total_seconds()) + " seconds")
             time.sleep((nexturlrequest - now).total_seconds())
             time.sleep(0.1)
     else:
         urlrequestsleft = 2
-        nexturlrequest = now + datetime.timedelta(seconds = 1)
+        nexturlrequest = now + timedelta(seconds = 1)
 
 def getURL(url):
     """Provide a URL, get the result"""
@@ -74,6 +75,55 @@ def postURL(url, json):
         delayURL()
         fulltx = requests.get(url, json=json, verify=False)
     return fulltx
+
+def retrieveUSD():
+    """"Retrieve USD data from Norskebank"""
+    print("Getting USD")
+    datelist = []
+    sd = datetime.strftime(startdate, "%Y-%m-%d")
+    url = "https://data.norges-bank.no/api/data/EXR/B.USD.NOK.SP?format=sdmx-json&startPeriod=" + \
+        sd + "&endPeriod=" + datetime.strftime(enddate, "%Y-%m-%d") + "&locale=no"
+    usdcourse = getURL(url).json()
+    ### Check if the first date recovered is actually in the data. Important for later.
+    while sd not in usdcourse["data"]["structure"]["dimensions"]["observation"][0]["values"][0]["id"]:
+        startdatetm = datetime.strptime(sd, "%Y-%m-%d")
+        sd = datetime.strftime(startdatetm - timedelta(days=1), "%Y-%m-%d")
+        url = "https://data.norges-bank.no/api/data/EXR/B.USD.NOK.SP?format=sdmx-json&startPeriod=" + \
+            sd + "&endPeriod=" + datetime.strftime(enddate, "%Y-%m-%d") + "&locale=no"
+        usdcourse = getURL(url).json()
+    ### Recover date & value info from our query.
+    for observation in usdcourse["data"]["dataSets"][0]["series"]["0:0:0:0"]["observations"]:
+        price = float(usdcourse["data"]["dataSets"][0]["series"]["0:0:0:0"]["observations"][observation][0])
+        date = usdcourse["data"]["structure"]["dimensions"]["observation"][0]["values"][int(observation)]["id"]
+        datelist.append(datetime.strptime(date, "%Y-%m-%d"))
+        if "USD" in PriceData:
+            PriceData["USD"][date] = price
+        else:
+            PriceData["USD"] = {}
+            PriceData["USD"][date] = price
+    ### Now we fill in the blanks
+    for date in datelist:
+        checking = date + timedelta(days=1)
+        while checking not in datelist and \
+            checking < enddate:
+            addeddate = datetime.strftime(checking, "%Y-%m-%d")
+            addedvalue = PriceData["USD"][datetime.strftime( \
+                            checking - timedelta(days=1), "%Y-%m-%d")]
+            PriceData["USD"][addeddate] = addedvalue
+            checking = checking + timedelta(days=1)
+    
+
+def loadPriceFiles(filename, ticker):
+    """"Load price files which contain pricedata older than startdexdate"""
+    with open(filename, "r") as prices:
+        price = json.load(prices)
+        for pricepoint in price:
+            pp = datetime.strptime(pricepoint, "%d-%m-%Y")
+            if ticker in PriceData:
+                PriceData[ticker][datetime.strftime(pp, "%Y-%m-%d")] = float(price[pricepoint])
+            else:
+                PriceData[ticker] = {}
+                PriceData[ticker][datetime.strftime(pp, "%Y-%m-%d")] = float(price[pricepoint])
 
 def AliasSwap(check_for_alias_tx, field = "dummy"):
     """
@@ -161,56 +211,26 @@ def getPriceData(token, epoch):
     global PriceData
     ### If we don't have USD data, get that first from Norges Bank.
     if "USD" not in PriceData:
-        print("Getting USD")
-        datelist = []
-        startdate = epoch
-        enddate = str(datetime.date.today())
-        url = "https://data.norges-bank.no/api/data/EXR/B.USD.NOK.SP?format=sdmx-json&startPeriod=" + \
-            startdate + "&endPeriod=" + enddate + "&locale=no"
-        usdcourse = getURL(url).json()
-        ### Check if the first date recovered is actually in the data. Important for later.
-        while startdate not in usdcourse["data"]["structure"]["dimensions"]["observation"][0]["values"][0]["id"]:
-            startdatetm = datetime.datetime.strptime(startdate, "%Y-%m-%d")
-            startdate = datetime.datetime.strftime(startdatetm - datetime.timedelta(days=1), "%Y-%m-%d")
-            url = "https://data.norges-bank.no/api/data/EXR/B.USD.NOK.SP?format=sdmx-json&startPeriod=" + \
-                startdate + "&endPeriod=" + enddate + "&locale=no"
-            usdcourse = getURL(url).json()
-        ### Recover date & value info from our query.
-        for observation in usdcourse["data"]["dataSets"][0]["series"]["0:0:0:0"]["observations"]:
-            price = float(usdcourse["data"]["dataSets"][0]["series"]["0:0:0:0"]["observations"][observation][0])
-            date = usdcourse["data"]["structure"]["dimensions"]["observation"][0]["values"][int(observation)]["id"]
-            datelist.append(datetime.datetime.strptime(date, "%Y-%m-%d"))
-            if "USD" in PriceData:
-                PriceData["USD"][date] = price
-            else:
-                PriceData["USD"] = {}
-                PriceData["USD"][date] = price
-        ### Now we fill in the blanks
-        for date in datelist:
-            checking = date + datetime.timedelta(days=1)
-            while checking not in datelist and \
-                checking < datetime.datetime.strptime(enddate, "%Y-%m-%d"):
-                addeddate = datetime.datetime.strftime(checking, "%Y-%m-%d")
-                addedvalue = PriceData["USD"][datetime.datetime.strftime( \
-                                checking - datetime.timedelta(days=1), "%Y-%m-%d")]
-                PriceData["USD"][addeddate] = addedvalue
-                checking = checking + datetime.timedelta(days=1)
+        retrieveUSD()
     ### Temporary fix; chance EGLD to WEGLD.
     if token == "EGLD":
         token = "WEGLD-bd4d79"
     ### Then we get the rest.
-    if token not in PriceData:
+    date = datetime.strptime(epoch, "%Y-%m-%d")
+    startdex = datetime.strptime(startdexdate, "%Y-%m-%d")
+    if token not in PriceData and date > startdex:
         url = "https://graph.xexchange.com/graphql"
         query = """{
-                values24h(metric: "priceUSD", series: \"""" + token + """\") {
+                latestCompleteValues(metric: "priceUSD", series: \"""" + token + """\") {
                     timestamp
                     value
                   }
                 }"""
         r = postURL(url, json={'query': query})
         result = json.loads(r.text)
+        print(result)
         if result["data"] is not None:
-            for pricepoint in result["data"]["values24h"]:
+            for pricepoint in result["data"]["latestCompleteValues"]:
                 timestamp = pricepoint["timestamp"].split(" ")[0]
                 price = float(pricepoint["value"])
                 if token in PriceData:
@@ -218,11 +238,14 @@ def getPriceData(token, epoch):
                 else:
                     PriceData[token] = {}
                     PriceData[token][timestamp] = price
+    if token not in PriceData and date < startdex:
+        loadPriceFiles("mexprices.json", "MEX-455c57")
+        loadPriceFiles("rideprices.json", "RIDE-7d18e9")
+        loadPriceFiles("egldprices.json", "WEGLD-bd4d79")
     ### Now it's time to return the price. If it's not available, we look forward in time.
-    date = datetime.datetime.strptime(epoch, "%Y-%m-%d")
-    while datetime.datetime.strftime(date, "%Y-%m-%d") not in PriceData[token]:
-        date = date + datetime.timedelta(days=1)
-    price = PriceData[token][datetime.datetime.strftime(date, "%Y-%m-%d")]
+    while datetime.strftime(date, "%Y-%m-%d") not in PriceData[token]:
+        date = date + timedelta(days=1)
+    price = PriceData[token][datetime.strftime(date, "%Y-%m-%d")]
     ### Convert to NOK:
     price = price * PriceData["USD"][epoch]
     return price
@@ -320,7 +343,7 @@ def csvparser():
                 fee = int(transaction["fee"])
             except KeyError:
                 fee = 0
-            timestamp = datetime.datetime.fromtimestamp(transaction["timestamp"])
+            timestamp = datetime.fromtimestamp(transaction["timestamp"])
             transactionid = transaction["txHash"]
             function = ""
             fulltx = []
@@ -383,6 +406,19 @@ def csvparser():
                           "transfer": Transfer,
                           "ESDTNFTCreate": getNFT
                           }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
+                        # {'delegate': stake, 
+                        #   'unDelegate': feeOnly, 
+                        #   'stake': stake,
+                        #   "reDelegateRewards": reDelegateRewards,
+                        #   "addLiquidity": addLiquidity,
+                        #   "removeLiquidity": removeLiquidity,
+                        #   "compoundRewards": compoundRewards,
+                        #   "enterFarm": enterFarm,
+                        #   "exitFarm": exitFarm,
+                        #   "unlockAssets": exitFarm,
+                        #   "claimRewards": claimRewards,
+                        #   "transfer": Transfer,
+                        #   }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
                     except KeyError:
                         undefined_tx(name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
                 ### if no "action", it's just a regular transfer out:
