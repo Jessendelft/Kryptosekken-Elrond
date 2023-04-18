@@ -7,7 +7,7 @@ Created on Wed Apr 27 21:27:00 2022
 
 import requests
 import csv
-import datetime
+from datetime import datetime, timedelta
 import json
 import time
 import warnings
@@ -23,8 +23,8 @@ aliases = { "erd1w9mmxz6533m7cf08gehs8phkun2x4e8689ecfk3makk3dgzsgurszhsxk4":"eM
             "erd1qqqqqqqqqqqqqpgq6wegs2xkypfpync8mn2sa5cmpqjlvrhwz5nqgepyg8":"XOXNO Marketplace",
             "erd1deaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaqtv0gag":"Burn Wallet",
             "erd12v2r3q33g43hju8smz6g4sgsqsxaut3e5lnjr5r3xrljqj3pwfmq0pxhz6":"Aerovek"} # Optional Aliases used to replace wallet values in notat field.
-startdate = datetime.datetime(2022,1,1) #Y,M,D
-enddate = datetime.datetime(2023,1,1) #Y,M,D
+startdate = datetime(2022,1,1) #Y,M,D
+enddate = datetime(2023,1,1) #Y,M,D
 marked = "Elrond"
 
 """Global variables"""
@@ -358,14 +358,15 @@ def csvparser():
                 ### Try to read the function field.
                 if "function" in transaction:
                     function = transaction["function"]
-                if function in ["stakeFarm", "exitFarm", "migrateToNewFarm"]:
+                if function in ["stakeFarm", "exitFarm", "migrateToNewFarm", "migrateV1_2Position"]:
                     name = transaction["action"]["name"]
                     ### Get the full transaction details.
                     fulltx = getURL(APIaddress + "/transactions/" + transactionid).json()
                     Tokenssent, Tokensreceived = getTokens(fulltx)
                     {'stakeFarm': enterFarm, 
                      'exitFarm': exitFarm,
-                     'migrateToNewFarm': swap
+                     'migrateToNewFarm': swap,
+                     'migrateV1_2Position': migrateV1_2postion
                      }[function](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
                 ### Try to read the action field.
                 elif "action" in transaction:
@@ -406,19 +407,6 @@ def csvparser():
                           "transfer": Transfer,
                           "ESDTNFTCreate": getNFT
                           }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
-                        # {'delegate': stake, 
-                        #   'unDelegate': feeOnly, 
-                        #   'stake': stake,
-                        #   "reDelegateRewards": reDelegateRewards,
-                        #   "addLiquidity": addLiquidity,
-                        #   "removeLiquidity": removeLiquidity,
-                        #   "compoundRewards": compoundRewards,
-                        #   "enterFarm": enterFarm,
-                        #   "exitFarm": exitFarm,
-                        #   "unlockAssets": exitFarm,
-                        #   "claimRewards": claimRewards,
-                        #   "transfer": Transfer,
-                        #   }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
                     except KeyError:
                         undefined_tx(name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
                 ### if no "action", it's just a regular transfer out:
@@ -767,6 +755,14 @@ def Transfer(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
             writetx("Overføring-Ut", 0, "", Tokenssent[key], key, fee, name + " to " + receiver)
         elif key.split("-")[0] not in doubletransfers:
             writetx("Overføring-Ut", 0, "", Tokenssent[key], key, fee, "transfer between own wallets")
+
+def migrateV1_2postion(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
+    for key in Tokensreceived.keys():
+        if key in Tokenssent:
+            lost = Tokenssent[key] - Tokensreceived[key]
+            writetx("Tap", 0, "", lost, key, fee, "migrateV1_2postion")
+        else:
+            writetx("Erverv", Tokensreceived[key], key, 0, "", 0, name)
 
 def undefined_tx(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
     """Anything undefined"""
