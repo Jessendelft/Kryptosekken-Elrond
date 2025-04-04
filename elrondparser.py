@@ -23,8 +23,8 @@ aliases = { "erd1w9mmxz6533m7cf08gehs8phkun2x4e8689ecfk3makk3dgzsgurszhsxk4":"eM
             "erd1qqqqqqqqqqqqqpgq6wegs2xkypfpync8mn2sa5cmpqjlvrhwz5nqgepyg8":"XOXNO Marketplace",
             "erd1deaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaddeaqtv0gag":"Burn Wallet",
             "erd12v2r3q33g43hju8smz6g4sgsqsxaut3e5lnjr5r3xrljqj3pwfmq0pxhz6":"Aerovek"} # Optional Aliases used to replace wallet values in notat field.
-startdate = datetime(2022,1,1) #Y,M,D
-enddate = datetime(2023,1,1) #Y,M,D
+startdate = datetime(2023,12,31) #Y,M,D
+enddate = datetime(2025,1,1) #Y,M,D
 marked = "Elrond"
 
 """Global variables"""
@@ -61,7 +61,7 @@ def getURL(url):
     delayURL()
     fulltx = requests.get(url, verify=False)
     while fulltx.status_code not in [200, 400, 404]:
-        print("Error retrieving from server, status code: " + str(fulltx.status_code))
+        #print("Error retrieving from server, status code: " + str(fulltx.status_code))
         delayURL()
         fulltx = requests.get(url, verify=False)
     return fulltx
@@ -71,7 +71,7 @@ def postURL(url, json):
     delayURL()
     fulltx = requests.post(url, json=json, verify=False)
     while fulltx.status_code not in [200, 400, 404]:
-        print("Error retrieving from server, status code: " + str(fulltx.status_code))
+        #print("Error retrieving from server, status code: " + str(fulltx.status_code))
         delayURL()
         fulltx = requests.get(url, json=json, verify=False)
     return fulltx
@@ -81,15 +81,16 @@ def retrieveUSD():
     print("Getting USD")
     datelist = []
     sd = datetime.strftime(startdate, "%Y-%m-%d")
+    ed = datetime.strftime(enddate, "%Y-%m-%d")
     url = "https://data.norges-bank.no/api/data/EXR/B.USD.NOK.SP?format=sdmx-json&startPeriod=" + \
-        sd + "&endPeriod=" + datetime.strftime(enddate, "%Y-%m-%d") + "&locale=no"
+        sd + "&endPeriod=" + ed + "&locale=no"
     usdcourse = getURL(url).json()
     ### Check if the first date recovered is actually in the data. Important for later.
     while sd not in usdcourse["data"]["structure"]["dimensions"]["observation"][0]["values"][0]["id"]:
         startdatetm = datetime.strptime(sd, "%Y-%m-%d")
         sd = datetime.strftime(startdatetm - timedelta(days=1), "%Y-%m-%d")
         url = "https://data.norges-bank.no/api/data/EXR/B.USD.NOK.SP?format=sdmx-json&startPeriod=" + \
-            sd + "&endPeriod=" + datetime.strftime(enddate, "%Y-%m-%d") + "&locale=no"
+            sd + "&endPeriod=" + ed + "&locale=no"
         usdcourse = getURL(url).json()
     ### Recover date & value info from our query.
     for observation in usdcourse["data"]["dataSets"][0]["series"]["0:0:0:0"]["observations"]:
@@ -131,34 +132,34 @@ def AliasSwap(check_for_alias_tx, field = "dummy"):
     Queries the multiversx api if no alias is known.
     """
     global aliases
-    check_tx = {}
-    if type(check_for_alias_tx) == str: check_tx[field] = check_for_alias_tx
-    else: check_tx[field] = check_for_alias_tx[field]
+    check_tx = ""
+    if type(check_for_alias_tx) == str: check_tx = check_for_alias_tx
+    else: check_tx = check_for_alias_tx[field]
     ### First we check our manual database
-    if check_tx[field] in aliases: check_tx[field] = aliases[check_tx[field]]
-    ### Next we check if we already received an Assets field
-    elif (field+"Assets") in check_tx:
-        check_tx[field] = check_tx[field+"Assets"]["name"]
+    if check_tx in aliases: 
+        #print("Found owner in database! " + check_tx)
+        check_tx = aliases[check_tx]
     ### If not, we start spamming the server
     else:
-        SmartContract = False
-        accountdetails = getURL(APIaddress + "/accounts/" + check_tx[field]).json()
-        if "erd1qqqqqqqqqqqqqp" in check_tx[field]:
-            #"erd1qqqqqqqqqqqqqp" == Smart Contract. Find the owner.
+        #print("Trying to find an account owner: " + APIaddress + "/accounts/" + check_tx)
+        accountdetails = getURL(APIaddress + "/accounts/" + check_tx).json()
+        if "erd1qqqqqqqqqqqqq" in check_tx:
+            #"erd1qqqqqqqqqqqqq" == Smart Contract. Find the owner.
             if "assets" in accountdetails:
-                aliases[check_tx[field]] = accountdetails["assets"]["name"]
-                check_tx[field] = accountdetails["assets"]["name"]
+                aliases[check_tx] = accountdetails["assets"]["name"]
+                check_tx = accountdetails["assets"]["name"]
             else:
-                check_tx[field] = accountdetails["ownerAddress"]
-                accountdetails = getURL(APIaddress + "/accounts/" + accountdetails["ownerAddress"]).json()
-                SmartContract = True
+                searchingRootOwner = True
+                while searchingRootOwner:
+                    owner = accountdetails["ownerAddress"]
+                    accountdetails = getURL(APIaddress + "/accounts/" + owner).json()
+                    if "ownerAddress" not in accountdetails:
+                        aliases[check_tx] = "Smart Contract owned by " + owner
+                        searchingRootOwner = False
         if "username" in accountdetails:
-            aliases[check_tx[field]] = accountdetails["username"]
-            check_tx[field] = accountdetails["username"]
-        if SmartContract:
-            aliases[field] = "Smart Contract owned by " + check_tx[field]
-            check_tx[field] = "Smart Contract owned by " + check_tx[field]
-    return check_tx[field]
+            aliases[check_tx] = accountdetails["username"]
+            check_tx = accountdetails["username"]
+    return check_tx
 
 def writerow(Type, Inn, InnValuta, Ut, UtValuta, Gebyr, Notat = ""):
     global Tokens, registeredfees
@@ -228,7 +229,7 @@ def getPriceData(token, epoch):
                 }"""
         r = postURL(url, json={'query': query})
         result = json.loads(r.text)
-        print(result)
+        #print(result)
         if result["data"] is not None:
             for pricepoint in result["data"]["latestCompleteValues"]:
                 timestamp = pricepoint["timestamp"].split(" ")[0]
@@ -345,6 +346,7 @@ def csvparser():
                 fee = 0
             timestamp = datetime.fromtimestamp(transaction["timestamp"])
             transactionid = transaction["txHash"]
+            print(transactionid)
             function = ""
             fulltx = []
             Tokenssent = {}
@@ -358,7 +360,9 @@ def csvparser():
                 ### Try to read the function field.
                 if "function" in transaction:
                     function = transaction["function"]
-                if function in ["stakeFarm", "exitFarm", "migrateToNewFarm", "migrateV1_2Position"]:
+                    print(function)
+                #if function in ["stakeFarm", "exitFarm", "migrateToNewFarm", "migrateV1_2Position"]:
+                if function in ["migrateV1_2Position"]:
                     name = transaction["action"]["name"]
                     ### Get the full transaction details.
                     fulltx = getURL(APIaddress + "/transactions/" + transactionid).json()
@@ -366,50 +370,61 @@ def csvparser():
                     {'stakeFarm': enterFarm, 
                      'exitFarm': exitFarm,
                      'migrateToNewFarm': swap,
-                     'migrateV1_2Position': migrateV1_2postion
+                     'migrateV1_2Position': swap
                      }[function](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
                 ### Try to read the action field.
                 elif "action" in transaction:
+                #if "action" in transaction:
                     name = transaction["action"]["name"]
                     ### Get the full transaction details. Not needed for everything, and slows things down.
                     if name not in ["delegate", "unDelegate", "stake", "wrapEgld", "unwrapEgld"]:
+                        print("Full tx: " + APIaddress + "/transactions/" + transactionid)
                         fulltx = getURL(APIaddress + "/transactions/" + transactionid).json()
                     ### Make an overview of what has gone in & what has gone out.
                     Tokenssent, Tokensreceived = getTokens(fulltx)
                     ### Secondly, we write to our csv file depending on the type.
-                    try:
-                        {'delegate': stake, 
-                          'unDelegate': feeOnly, 
-                          'stake': stake,
-                          'wrapEgld': wrapEgld,
-                          'unwrapEgld': unwrapEgld,
-                          'confirmTickets': feeOnly,
-                          'unBond': unStake,
-                          'withdraw': unStake,
-                          "unStake": unStake,
-                          "reDelegateRewards": reDelegateRewards,
-                          "claimLockedAssets": claimLockedAssets,
-                          "claimLaunchpadTokens": claimLaunchpadTokens,
-                          "addLiquidity": addLiquidity,
-                          "removeLiquidity": removeLiquidity,
-                          "compoundRewards": compoundRewards,
-                          "enterFarm": enterFarm,
-                          "exitFarm": exitFarm,
-                          "unlockAssets": exitFarm,
-                          "mergeLockedAssetTokens": feeOnly,
-                          "swap": swap,
-                          "claimRewards": claimRewards,
-                          "issueSemiFungable": feeOnly,
-                          "buy": getNFT,
-                          "buyNft": getNFT,
-                          "mint": getNFT,
-                          "enterSale": getNFT,
-                          "transfer": Transfer,
-                          "ESDTNFTCreate": getNFT
-                          }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
-                    except KeyError:
-                        undefined_tx(name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
-                ### if no "action", it's just a regular transfer out:
+                    #try:
+                    {'delegate': stake, 
+                      'unDelegate': feeOnly, 
+                      'stake': stake,
+                      'wrapEgld': wrapEgld,
+                      'unwrapEgld': unwrapEgld,
+                      'confirmTickets': feeOnly,
+                      'unBond': unStake,
+                      'withdraw': unStake,
+                      "unStake": unStake,
+                      "reDelegateRewards": reDelegateRewards,
+                      "claimLockedAssets": claimLockedAssets,
+                      "claimLaunchpadTokens": claimLaunchpadTokens,
+                      "addLiquidity": addLiquidity,
+                      "removeLiquidity": removeLiquidity,
+                      "compoundRewards": compoundRewards,
+                      "enterFarm": enterFarm,
+                      "exitFarm": exitFarm,
+                      "unlockAssets": exitFarm,
+                      "mergeLockedAssetTokens": feeOnly,
+                      "swap": swap,
+                      "claimRewards": claimRewards,
+                      "issueSemiFungable": feeOnly,
+                      "buy": getNFT,
+                      "buyNft": getNFT,
+                      "mint": getNFT,
+                      "enterSale": getNFT,
+                      "transfer": Transfer,
+                      "ESDTNFTCreate": getNFT,
+                      "composeTasks": swap
+                      }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
+                          # { "removeLiquidity": removeLiquidity,
+                          #   "enterFarm": enterFarm,
+                          #   "unlockAssets": exitFarm,
+                          #   "unlockAssets": exitFarm,
+                          #   "exitFarm": exitFarm,
+                          #   "claimRewards": claimRewards
+                          #   }[name](name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
+                    #except KeyError:
+                    #    undefined_tx(name, fee, transaction, fulltx, Tokenssent, Tokensreceived)
+                    #    pass
+                ## if no "action", it's just a regular transfer out:
                 else:
                     eGLDvalue = int(transaction["value"])
                     if transaction["receiver"] not in ownWalletlist:
@@ -425,11 +440,11 @@ def csvparser():
                     name = transaction["action"]["name"]
                     try:
                         {
-                         "buy": getNFT,
-                         "buyNft": getNFT,
-                         "mint": getNFT,
-                         "enterSale": getNFT
-                         }[name](name, 0, transaction, fulltx, Tokenssent, Tokensreceived)
+                          "buy": getNFT,
+                          "buyNft": getNFT,
+                          "mint": getNFT,
+                          "enterSale": getNFT
+                          }[name](name, 0, transaction, fulltx, Tokenssent, Tokensreceived)
                     except:
                         if "arguments" in transaction["action"] and "originalTxHash" not in transaction:
                             for transfer in transaction["action"]["arguments"]["transfers"]:
@@ -473,8 +488,8 @@ def csvparser():
                     name = transaction["action"]["name"]
                     try:
                         {
-                         "transfer": Transfer
-                         }[name](name, 0, transaction, fulltx, Tokenssent, Tokensreceived)
+                          "transfer": Transfer
+                          }[name](name, 0, transaction, fulltx, Tokenssent, Tokensreceived)
                     except KeyError:
                         undefined_tx(name, 0, transaction, fulltx, Tokenssent, Tokensreceived)
                 else:
@@ -483,11 +498,13 @@ def csvparser():
 def getTokens(fulltx):
     Tokenssent = {}
     Tokensreceived = {}
+    fulltx["sender"] = AliasSwap(fulltx, "sender")
+    fulltx["receiver"] = AliasSwap(fulltx, "receiver")
     if "operations" in fulltx:
         for operation in fulltx["operations"]:
             operation["sender"] = AliasSwap(operation, "sender")
             operation["receiver"] = AliasSwap(operation, "receiver")
-            if operation["action"] == "transfer":
+            if operation["action"] in ["transfer", "create"]:
                 ticker = "EGLD"
                 if "identifier" in operation:
                     ticker = operation["identifier"]
@@ -518,6 +535,13 @@ def getTokens(fulltx):
                     if ticker not in Tokenssent:
                         Tokenssent[ticker] = ESDTvalue
                     else: Tokenssent[ticker] += ESDTvalue
+    # In case the operations do not contain a value, we retrieve it from the main value field. Per now only EGLD
+    if fulltx["sender"] == wallet_address and int(fulltx["value"]) > 0:
+        ticker = "EGLD"
+        if ticker not in Tokenssent:
+            Tokenssent[ticker] = int(fulltx["value"])
+        else: Tokenssent[ticker] += int(fulltx["value"])
+    print(Tokensreceived, Tokenssent)
     return Tokenssent, Tokensreceived
 
 def feeOnly(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
@@ -660,7 +684,7 @@ def exitFarm(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
         del Tokensreceived[topreceived]
         deleted = True
     try:
-        if deleted:
+        if deleted and name not in ["unlockAssets"]:
             ### The transfer (if any) are rewards. Treat as Inntekt
             writetx("Inntekt", list(Tokensreceived.values())[0], \
                     list(Tokensreceived.keys())[0], 0, "", fee, name)
@@ -676,12 +700,12 @@ def exitFarm(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
 
 def swap(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
     """Swapping = Handel. Use also when migrating to new farm."""
-    if name == "swap":
-        swapout = transaction["action"]["arguments"]["transfers"][0]["token"]
-        swapin = transaction["action"]["arguments"]["transfers"][1]["token"]
-    if name == "transfer":
-        swapout = list(Tokenssent)[0]
-        swapin = list(Tokensreceived)[0]
+    #if name == "swap":
+    #    swapout = transaction["action"]["arguments"]["transfers"][0]["token"]
+    #    swapin = transaction["action"]["arguments"]["transfers"][1]["token"]
+    #if name == "transfer":
+    swapout = list(Tokenssent)[0]
+    swapin = list(Tokensreceived)[0]
     #swapout = swapout.split("-")[0]
     #swapin = swapin.split("-")[0]
     writetx("Handel", Tokensreceived[swapin], swapin, \
@@ -739,7 +763,7 @@ def Transfer(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
             if operation["sender"] == wallet_address: receiver = operation["receiver"]
             elif operation["receiver"] == wallet_address: sender = operation["sender"]
     ### Filter the transfer items to only show NFT's.
-    doubletransfers = ["MEX", "LKMEX", "XMEX", "LKFARM", "WEGLD", "LKLP", "MEXFARM", "MEXFARML"]
+    doubletransfers = ["LKFARM", "WEGLD", "LKLP", "MEXFARM", "MEXFARML"]
     for key in Tokensreceived.keys():
         if sender not in ownWalletlist and \
             key.split("-")[0] not in doubletransfers:
@@ -763,6 +787,9 @@ def migrateV1_2postion(name, fee, transaction, fulltx, Tokenssent, Tokensreceive
             writetx("Tap", 0, "", lost, key, fee, "migrateV1_2postion")
         else:
             writetx("Erverv", Tokensreceived[key], key, 0, "", 0, name)
+    for key in Tokenssent.keys():
+        if key not in Tokensreceived:
+            writetx("Tap", 0, "", lost, key, fee, "migrateV1_2postion")
 
 def undefined_tx(name, fee, transaction, fulltx, Tokenssent, Tokensreceived):
     """Anything undefined"""
